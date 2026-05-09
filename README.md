@@ -119,26 +119,37 @@ pveum acl modify /vms --tokens 'root@pam!vncproxy' --roles PVEVMAdmin
 
 ## Connect with a VNC client
 
-Point your VNC client (e.g. TigerVNC) at the proxy address (e.g. `localhost:5900`):
+Point your VNC client (e.g. TigerVNC) at the proxy address (e.g. `localhost:5900`).
 
-| Field | Value | Example |
-|-------|-------|---------|
-| Username | `<node>@<vmid>@<token-id>` | `pve@105@root@pam!vncproxy` |
-| Password | `<token-secret>` | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
+### Username — concatenate three values with `@`
 
-Switch VMs by changing the `vmid` part of the username — no proxy restart needed.
+```
+<node>@<vmid>@<token-id>
+```
 
-### Username layout
+| Part | Where to find it | Example |
+|------|------------------|---------|
+| `<node>` | PVE Web UI left sidebar — the host under `Datacenter` | `pve` |
+| `<vmid>` | The VM's numeric ID (also visible in the sidebar) | `105` |
+| `<token-id>` | The full Token ID shown when creating the API token, in the form `user@realm!tokenname` — keep the `@` and `!` verbatim | `root@pam!vncproxy` |
+
+**Final username**: `pve@105@root@pam!vncproxy`
 
 ```mermaid
 flowchart LR
     U["pve@105@root@pam!vncproxy"]
-    U --> N["pve<br/>(node name)"]
-    U --> V["105<br/>(vmid)"]
-    U --> T["root@pam!vncproxy<br/>(token-id, kept verbatim)"]
+    U --> N["pve<br/>node name"]
+    U --> V["105<br/>vmid"]
+    U --> T["root@pam!vncproxy<br/>token-id<br/>(contains @ and !, kept as-is)"]
 ```
 
-The proxy splits on the first two `@` characters: node, vmid, then the rest is the token-id (which itself contains `@` and `!`).
+### Password — the token secret
+
+The password field is **just the token secret** — the UUID-looking string PVE shows once when the token is created (e.g. `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`). No `PVEAPIToken=` prefix, no token-id repeated.
+
+### Switching VMs
+
+Change only the `<vmid>` part of the username. Same proxy, same token, no restart.
 
 ## Client compatibility
 

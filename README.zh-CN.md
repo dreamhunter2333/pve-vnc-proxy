@@ -119,26 +119,37 @@ pveum acl modify /vms --tokens 'root@pam!vncproxy' --roles PVEVMAdmin
 
 ## 使用 VNC 客户端连接
 
-VNC 客户端（如 TigerVNC）连接到代理地址（如 `localhost:5900`）：
+VNC 客户端（如 TigerVNC）连接到代理地址（如 `localhost:5900`）。
 
-| 字段 | 内容 | 示例 |
-|------|------|------|
-| 用户名 | `<node>@<vmid>@<token-id>` | `pve@105@root@pam!vncproxy` |
-| 密码 | `<token-secret>` | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
+### 用户名 — 三段用 `@` 拼接
 
-切换 VM 只需改用户名里的 `vmid`，无需重启代理。
+```
+<node>@<vmid>@<token-id>
+```
 
-### 用户名格式
+| 段 | 在哪里找 | 示例 |
+|----|----------|------|
+| `<node>` | PVE Web UI 左侧栏 `Datacenter` 下的主机名 | `pve` |
+| `<vmid>` | VM 的数字 ID（左侧栏 VM 名称前的数字） | `105` |
+| `<token-id>` | 创建 API Token 时看到的完整 Token ID，形如 `user@realm!tokenname`，**`@` 与 `!` 都要原样保留** | `root@pam!vncproxy` |
+
+**最终用户名**：`pve@105@root@pam!vncproxy`
 
 ```mermaid
 flowchart LR
     U["pve@105@root@pam!vncproxy"]
-    U --> N["pve<br/>(节点名)"]
-    U --> V["105<br/>(vmid)"]
-    U --> T["root@pam!vncproxy<br/>(token-id，原样保留)"]
+    U --> N["pve<br/>节点名"]
+    U --> V["105<br/>vmid"]
+    U --> T["root@pam!vncproxy<br/>token-id<br/>(含 @ 与 !，原样填)"]
 ```
 
-代理在前两个 `@` 切两刀：第一段是节点名，第二段是 vmid，剩余全部当 token-id（其内部含 `@` 与 `!`）。
+### 密码 — token secret
+
+密码栏**只填 token secret 本身** — 创建 token 时 PVE 弹出的那个 UUID 字符串（如 `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`）。不要加 `PVEAPIToken=` 前缀，也不要重复 token-id。
+
+### 切换 VM
+
+只改用户名里的 `<vmid>` 段。代理与 token 都不用动，也不必重启。
 
 ## 客户端兼容性
 
