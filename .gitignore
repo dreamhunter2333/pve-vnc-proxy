@@ -1,0 +1,4 @@
+/pve-vnc-proxy
+/pve-vnc-proxy-linux-*
+*.log
+.env

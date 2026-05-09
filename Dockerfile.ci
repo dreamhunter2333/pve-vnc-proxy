@@ -1,0 +1,17 @@
+FROM alpine:latest
+
+ARG TARGETARCH
+
+RUN apk add --no-cache ca-certificates tzdata
+
+WORKDIR /app
+
+COPY pve-vnc-proxy-linux-${TARGETARCH} ./pve-vnc-proxy
+
+RUN chmod +x ./pve-vnc-proxy
+
+EXPOSE 5900
+
+ENV PVE_LISTEN=0.0.0.0:5900
+
+ENTRYPOINT ["./pve-vnc-proxy"]
