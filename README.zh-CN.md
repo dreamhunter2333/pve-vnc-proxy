@@ -66,6 +66,7 @@ services:
     environment:
       PVE_HOST: https://pve.example.com:8006
       PVE_LISTEN: 0.0.0.0:5900
+      # PVE_INSECURE: "true" # 仅用于 PVE 自签证书
 ```
 
 ```bash
@@ -81,13 +82,18 @@ docker run -d --name pve-vnc-proxy --restart unless-stopped \
   ghcr.io/dreamhunter2333/pve-vnc-proxy:latest
 ```
 
+若 PVE 使用默认自签证书，额外传入 `-e PVE_INSECURE=true`。正式环境建议安装受信任证书，而不是关闭校验。
+
 多架构镜像（`linux/amd64`、`linux/arm64`）由 GitHub Actions 在每次 tag push 时发布到 GHCR。
 
 ### 本地编译
 
 ```bash
 go build -o pve-vnc-proxy .
-PVE_HOST=https://pve.example.com:8006 ./pve-vnc-proxy -listen 127.0.0.1:5901
+PVE_HOST=https://192.168.2.200:8006 \
+PVE_INSECURE=true \
+PVE_LISTEN=127.0.0.1:5901 \
+./pve-vnc-proxy
 ```
 
 > macOS 上端口 `5900` 通常被 Screen Sharing 占用，本地建议用 `5901+`。
@@ -101,25 +107,37 @@ PVE_HOST=https://pve.example.com:8006 ./pve-vnc-proxy -listen 127.0.0.1:5901
 | `-insecure` | `PVE_INSECURE` | `false` | 跳过 PVE TLS 校验（自签证书时启用）|
 | `-max-conns` | `PVE_MAX_CONNS` | `256` | 最大并发客户端连接数 |
 
-## 创建 PVE API Token
+## 创建并授权 PVE API Token
 
-Web UI：`Datacenter` → `Permissions` → `API Tokens` → `Add`，**取消勾选** Privilege Separation 后保存，复制 Token ID 与 Secret（只显示一次）。
+推荐保留 **Privilege Separation**，只给 token 所需 VM 的控制台权限。Token 权限不会超过所属用户的权限；若不是 `root@pam`，所属用户也必须拥有对应权限。
 
-或在 PVE 主机上：
+### Web UI（推荐）
+
+1. 进入 `Datacenter` → `Permissions` → `API Tokens` → `Add`。
+2. 选择用户、填写 Token ID，保留 **Privilege Separation** 勾选并保存。
+3. 立即复制完整 Token ID 与 Secret；Secret 只显示一次。
+4. 进入 `Datacenter` → `Permissions` → `Add` → `API Token Permission`。
+5. Path 填 `/vms/<vmid>`（如 `/vms/105`），选择刚创建的 token，Role 选 `PVEVMUser`。
+
+`PVEVMUser` 包含代理所需的 `VM.Console` 权限。若要让同一 token 访问所有 VM，可将 Path 改为 `/vms`；按单个 VM 授权更安全。
+
+### CLI
 
 ```bash
-pveum user token add root@pam vncproxy --privsep 0
+pveum user token add root@pam vncproxy -privsep 1
+pveum acl modify /vms/105 -token 'root@pam!vncproxy' -role PVEVMUser
+pveum user token permissions root@pam vncproxy
 ```
 
-若启用了 Privilege Separation，需另外授权：
+若明确希望 token 继承所属用户的全部权限，可关闭 Privilege Separation，但不推荐给高权限用户使用：
 
 ```bash
-pveum acl modify /vms --tokens 'root@pam!vncproxy' --roles PVEVMAdmin
+pveum user token add root@pam vncproxy -privsep 0
 ```
 
 ## 使用 VNC 客户端连接
 
-VNC 客户端（如 TigerVNC）连接到代理地址（如 `localhost:5900`）。
+VNC 客户端（如 TigerVNC）连接到代理地址（如 `localhost:5900`，macOS 本地运行通常为 `localhost:5901`）。请先准备好用户名和 Secret：客户端认证必须在连接建立后的 15 秒内完成，超时后需重新连接。
 
 ### 用户名 — 三段用 `@` 拼接
 
@@ -150,6 +168,20 @@ flowchart LR
 ### 切换 VM
 
 只改用户名里的 `<vmid>` 段。代理与 token 都不用动，也不必重启。
+
+## 故障排查
+
+先查看代理日志；日志不会打印 Token ID 或 Secret。
+
+| 日志或现象 | 原因与处理 |
+|------------|------------|
+| `address already in use` | 监听端口被占用；macOS 常见是 Screen Sharing 占用 `5900`，改用 `PVE_LISTEN=127.0.0.1:5901` |
+| `client handshake: ... i/o timeout` | 未在 15 秒内完成认证；准备好用户名和 Secret 后重新连接 |
+| `vncproxy http 401` | Token ID 或 Secret 不正确；Token ID 必须包含完整的 `user@realm!tokenname` |
+| `vncproxy http 403` / `VM.Console` | token 无权打开该 VM 控制台；在 `/vms/<vmid>` 上授予 `PVEVMUser` |
+| `x509: certificate signed by unknown authority` | PVE 使用自签证书；安装 PVE CA，或仅在可信网络中设置 `PVE_INSECURE=true` |
+| `no route to host` / `connection refused` | 代理进程无法访问 `PVE_HOST:8006`；检查地址、路由和 macOS“本地网络”权限 |
+| `wss dial failed` | WebSocket/TLS 建连失败；检查 PVE 地址、证书以及中间反向代理是否支持 WebSocket |
 
 ## 客户端兼容性
 

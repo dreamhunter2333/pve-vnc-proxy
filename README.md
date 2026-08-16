@@ -66,6 +66,7 @@ services:
     environment:
       PVE_HOST: https://pve.example.com:8006
       PVE_LISTEN: 0.0.0.0:5900
+      # PVE_INSECURE: "true" # only for a self-signed PVE certificate
 ```
 
 ```bash
@@ -81,13 +82,18 @@ docker run -d --name pve-vnc-proxy --restart unless-stopped \
   ghcr.io/dreamhunter2333/pve-vnc-proxy:latest
 ```
 
+If PVE uses its default self-signed certificate, also pass `-e PVE_INSECURE=true`. Prefer installing a trusted certificate instead of disabling verification in production.
+
 Multi-arch images (`linux/amd64`, `linux/arm64`) are published to GHCR by GitHub Actions on every tag push.
 
 ### Build from source
 
 ```bash
 go build -o pve-vnc-proxy .
-PVE_HOST=https://pve.example.com:8006 ./pve-vnc-proxy -listen 127.0.0.1:5901
+PVE_HOST=https://192.168.2.200:8006 \
+PVE_INSECURE=true \
+PVE_LISTEN=127.0.0.1:5901 \
+./pve-vnc-proxy
 ```
 
 > On macOS, port `5900` is usually claimed by Screen Sharing — use `5901+` locally.
@@ -101,25 +107,37 @@ PVE_HOST=https://pve.example.com:8006 ./pve-vnc-proxy -listen 127.0.0.1:5901
 | `-insecure` | `PVE_INSECURE` | `false` | Skip PVE TLS verification (self-signed certs) |
 | `-max-conns` | `PVE_MAX_CONNS` | `256` | Max concurrent client connections |
 
-## Create a PVE API Token
+## Create and authorize a PVE API Token
 
-Web UI: `Datacenter` → `Permissions` → `API Tokens` → `Add`. **Uncheck** Privilege Separation, save, copy the Token ID and Secret (shown once).
+Keep **Privilege Separation** enabled and grant only the console permission for the required VM. A token's effective permissions cannot exceed those of its owning user; if the owner is not `root@pam`, that user also needs the corresponding permission.
 
-Or on the PVE host:
+### Web UI (recommended)
+
+1. Go to `Datacenter` → `Permissions` → `API Tokens` → `Add`.
+2. Select the user, enter the Token ID, leave **Privilege Separation** enabled, and save.
+3. Immediately copy the full Token ID and Secret; the Secret is shown only once.
+4. Go to `Datacenter` → `Permissions` → `Add` → `API Token Permission`.
+5. Set Path to `/vms/<vmid>` (for example `/vms/105`), select the new token, and choose the `PVEVMUser` role.
+
+`PVEVMUser` contains the required `VM.Console` privilege. To access every VM with the same token, use `/vms` as the Path; granting access per VM is safer.
+
+### CLI
 
 ```bash
-pveum user token add root@pam vncproxy --privsep 0
+pveum user token add root@pam vncproxy -privsep 1
+pveum acl modify /vms/105 -token 'root@pam!vncproxy' -role PVEVMUser
+pveum user token permissions root@pam vncproxy
 ```
 
-If Privilege Separation stays enabled, grant ACL separately:
+To intentionally inherit all permissions from the owning user, disable Privilege Separation. This is not recommended for highly privileged users:
 
 ```bash
-pveum acl modify /vms --tokens 'root@pam!vncproxy' --roles PVEVMAdmin
+pveum user token add root@pam vncproxy -privsep 0
 ```
 
 ## Connect with a VNC client
 
-Point your VNC client (e.g. TigerVNC) at the proxy address (e.g. `localhost:5900`).
+Point your VNC client (e.g. TigerVNC) at the proxy address (e.g. `localhost:5900`, or usually `localhost:5901` when running locally on macOS). Prepare the username and Secret first: client authentication must finish within 15 seconds after connecting, otherwise reconnect and try again.
 
 ### Username — concatenate three values with `@`
 
@@ -150,6 +168,20 @@ The password field is **just the token secret** — the UUID-looking string PVE 
 ### Switching VMs
 
 Change only the `<vmid>` part of the username. Same proxy, same token, no restart.
+
+## Troubleshooting
+
+Check the proxy logs first; they never print the Token ID or Secret.
+
+| Log or symptom | Cause and resolution |
+|----------------|----------------------|
+| `address already in use` | The listen port is occupied. On macOS, Screen Sharing commonly uses `5900`; set `PVE_LISTEN=127.0.0.1:5901` |
+| `client handshake: ... i/o timeout` | Authentication was not completed within 15 seconds; prepare the username and Secret, then reconnect |
+| `vncproxy http 401` | The Token ID or Secret is incorrect; the Token ID must contain the complete `user@realm!tokenname` |
+| `vncproxy http 403` / `VM.Console` | The token cannot open this VM's console; grant `PVEVMUser` on `/vms/<vmid>` |
+| `x509: certificate signed by unknown authority` | PVE uses a self-signed certificate; install the PVE CA, or set `PVE_INSECURE=true` only on a trusted network |
+| `no route to host` / `connection refused` | The proxy process cannot reach `PVE_HOST:8006`; check the address, routing, and macOS Local Network permission |
+| `wss dial failed` | The WebSocket/TLS connection failed; check the PVE address, certificate, and WebSocket support in any reverse proxy |
 
 ## Client compatibility
 
