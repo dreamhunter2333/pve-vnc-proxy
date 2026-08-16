@@ -169,6 +169,23 @@ The password field is **just the token secret** — the UUID-looking string PVE 
 
 Change only the `<vmid>` part of the username. Same proxy, same token, no restart.
 
+## Windows bidirectional clipboard
+
+PVE's VNC clipboard requires **SPICE vdagent** inside the Windows guest. The QEMU Guest Agent alone is not sufficient, and no additional VNC server should be installed in Windows.
+
+1. In the PVE Web UI, open the VM's `Hardware` → `Display` settings and set Clipboard to `VNC`. CLI example:
+
+   ```bash
+   qm set 105 -vga std,clipboard=vnc
+   ```
+
+   When using the CLI, replace `105` and `std` with the actual VMID and existing display type.
+2. Inside the Windows guest, run the [Windows SPICE Guest Tools](https://www.spice-space.org/download/windows/spice-guest-tools/spice-guest-tools-latest.exe) installer as Administrator. It includes the SPICE agent and VirtIO Serial driver required for clipboard integration.
+3. Restart Windows and reconnect the VNC client.
+4. If synchronization still fails, verify that the VNC client accepts and sends clipboard updates. TigerVNC enables `AcceptClipboard` and `SendClipboard` by default.
+
+This channel is primarily intended for text copy and paste; it does not provide file transfer.
+
 ## Troubleshooting
 
 Check the proxy logs first; they never print the Token ID or Secret.

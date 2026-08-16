@@ -169,6 +169,23 @@ flowchart LR
 
 只改用户名里的 `<vmid>` 段。代理与 token 都不用动，也不必重启。
 
+## Windows 双向剪贴板
+
+PVE 的 VNC 剪贴板依赖 Windows Guest 内的 **SPICE vdagent**，不是 QEMU Guest Agent，也不需要在 Windows 中安装额外的 VNC Server。
+
+1. 在 PVE Web UI 打开 VM 的 `Hardware` → `Display`，将 Clipboard 设置为 `VNC`。CLI 示例：
+
+   ```bash
+   qm set 105 -vga std,clipboard=vnc
+   ```
+
+   使用 CLI 时请将 `105` 和 `std` 替换为实际 VMID 与现有显示类型。
+2. 在 Windows Guest 中以管理员身份安装 [Windows SPICE Guest Tools](https://www.spice-space.org/download/windows/spice-guest-tools/spice-guest-tools-latest.exe)。安装包包含剪贴板所需的 SPICE Agent 和 VirtIO Serial 驱动。
+3. 重启 Windows，并重新连接 VNC。
+4. 若仍无法同步，确认 VNC 客户端已启用发送和接收剪贴板；TigerVNC 默认启用 `SendClipboard` 与 `AcceptClipboard`。
+
+该通道主要用于文本复制粘贴，不提供文件传输。
+
 ## 故障排查
 
 先查看代理日志；日志不会打印 Token ID 或 Secret。
